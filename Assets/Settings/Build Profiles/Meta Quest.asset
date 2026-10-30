@@ -79,10 +79,10 @@ MonoBehaviour:
   m_Script: {fileID: 15010, guid: 0000000000000000e000000000000000, type: 0}
   m_Name: Quality Settings
   m_EditorClassIdentifier: UnityEditor.dll::UnityEditor.Build.Profile.BuildProfileQualitySettings
-  m_DefaultQualityLevel: Meta Quest (Build Profile)
+  m_DefaultQualityLevel: Meta Quest Build Profile
   m_QualityLevels:
   - Mobile
-  - Meta Quest (Build Profile)
+  - Meta Quest Build Profile
 --- !u!114 &11400000
 MonoBehaviour:
   m_ObjectHideFlags: 0
