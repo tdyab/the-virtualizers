@@ -3,7 +3,7 @@ using System.Text;
 using TMPro;
 using UnityEngine;
 
-// Match-level UI for the local player: lobby info, countdown, timer, kill feed, game-over board.
+// Match-level UI for the local player: lobby info, countdown, timer, kill feed, live ranking, game-over board.
 // Creates itself at runtime and parents a world-space canvas to the main camera.
 public class MatchHUD : MonoBehaviour {
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -13,11 +13,11 @@ public class MatchHUD : MonoBehaviour {
         DontDestroyOnLoad(go);
     }
 
-    public float distance = 1.3f;   // metres in front of the camera
+    public float distance = 1.0f;   // metres in front of the camera
     public int feedLines = 4;
 
     Canvas canvas;
-    TMP_Text status, center, feed, board;
+    TMP_Text status, center, feed, board, live;
     GameManager subscribed;
     readonly Queue<string> feedQueue = new Queue<string>();
     float nextRefresh;
@@ -33,9 +33,10 @@ public class MatchHUD : MonoBehaviour {
 
         status = MakeText("Status", new Vector2(0, 270), new Vector2(900, 60), 36, TextAlignmentOptions.Center);
         center = MakeText("Center", new Vector2(0, 60), new Vector2(900, 200), 110, TextAlignmentOptions.Center);
-        feed   = MakeText("Feed", new Vector2(-480, 150), new Vector2(420, 160), 24, TextAlignmentOptions.TopLeft);
+        feed   = MakeText("Feed", new Vector2(-300, 150), new Vector2(420, 160), 24, TextAlignmentOptions.TopLeft);
+        live = MakeText("Live", new Vector2(1000, -500), new Vector2(380, 160), 30, TextAlignmentOptions.BottomRight);
+        live.rectTransform.pivot = new Vector2(1f, 0f);
         board  = MakeText("Board", new Vector2(0, -40), new Vector2(800, 420), 38, TextAlignmentOptions.Center);
-        feed.rectTransform.anchoredPosition = new Vector2(-300, 170);
     }
 
     TMP_Text MakeText(string name, Vector2 pos, Vector2 size, float fontSize, TextAlignmentOptions align) {
@@ -67,12 +68,13 @@ public class MatchHUD : MonoBehaviour {
         nextRefresh = Time.time + 0.1f;
 
         if (gm == null || !gm.IsSpawned) {
-            status.text = ""; center.text = ""; feed.text = ""; board.text = "";
+            status.text = ""; center.text = ""; feed.text = ""; board.text = ""; live.text = "";
             return;
         }
 
         status.text = gm.StatusLine();
         feed.text = string.Join("\n", feedQueue);
+        live.text = gm.State.Value == MatchState.Playing ? BuildLive(gm) : "";
 
         switch (gm.State.Value) {
             case MatchState.Lobby:
@@ -96,6 +98,17 @@ public class MatchHUD : MonoBehaviour {
                 break;
         }
     }
+
+    string BuildLive(GameManager gm) {
+    var sb = new StringBuilder();
+    foreach (PlayerState p in gm.Ranked()) {
+        bool me = p == PlayerState.Local;
+        string hex = ColorUtility.ToHtmlStringRGB(p.PlayerColor);
+        string row = $"{gm.RankOf(p)}. <color=#{hex}>{p.DisplayName}</color>  {p.Kills.Value}";
+        sb.AppendLine(me ? $"<b>{row}</b>" : row);
+    }
+    return sb.ToString();
+}
 
     string BuildBoard(GameManager gm) {
         var sb = new StringBuilder();
