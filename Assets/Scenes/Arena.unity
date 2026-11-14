@@ -8358,7 +8358,7 @@ MonoBehaviour:
   matchSeconds: 180
   countdownSeconds: 3
   overtimeSeconds: 30
-  minPlayers: 1
+  minPlayers: 2
   maxPlayers: 5
   State:
     UpdateTraits:
