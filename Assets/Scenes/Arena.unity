@@ -8357,7 +8357,8 @@ MonoBehaviour:
   killsToWin: 10
   matchSeconds: 180
   countdownSeconds: 3
-  minPlayers: 2
+  overtimeSeconds: 30
+  minPlayers: 1
   maxPlayers: 5
   State:
     UpdateTraits:
@@ -8374,6 +8375,16 @@ MonoBehaviour:
       MinSecondsBetweenUpdates: 0
       MaxSecondsBetweenUpdates: 0
     m_InternalValue: 18446744073709551615
+  Overtime:
+    UpdateTraits:
+      MinSecondsBetweenUpdates: 0
+      MaxSecondsBetweenUpdates: 0
+    m_InternalValue: 0
+  IsTie:
+    UpdateTraits:
+      MinSecondsBetweenUpdates: 0
+      MaxSecondsBetweenUpdates: 0
+    m_InternalValue: 0
 --- !u!4 &1017056513
 Transform:
   m_ObjectHideFlags: 0
@@ -16892,6 +16903,7 @@ MonoBehaviour:
   autoConnect: 1
   hostIp: 127.0.0.1
   port: 7777
+  migrationStagger: 2.5
 --- !u!4 &1985902983
 Transform:
   m_ObjectHideFlags: 0
