@@ -27,6 +27,8 @@ public class PlayerHUD : MonoBehaviour
     void Update()
     {
         if (PlayerState.Local != me) Bind(PlayerState.Local);
+        // Not in a game yet: hide health / ammo instead of showing the prefab's "New Text" placeholders.
+        ShowBars(me != null);
         if (me == null) return;
 
         // Health bar
@@ -70,6 +72,14 @@ public class PlayerHUD : MonoBehaviour
         gun = s ? s.GetComponent<LaserGun>() : null;
         lastHealth = s ? s.Health.Value : 0;
         deadSince = -1f;
+    }
+
+    void ShowBars(bool on)
+    {
+        if (healthFill) healthFill.enabled = on;
+        if (healthText) healthText.enabled = on;
+        if (ammoText) ammoText.enabled = on;
+        if (!on && respawnText) respawnText.text = "";
     }
 
     void SetFlashAlpha(float a)

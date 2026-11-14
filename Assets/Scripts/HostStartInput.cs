@@ -4,7 +4,7 @@ using UnityEngine.InputSystem;
 
 // Start / restart button for the match.
 //  * Host in VR: HOLD the start button (A on the right controller) for HoldSeconds.
-//  * Editor / desktop: press Enter (instant).
+//  * Editor / desktop: hold A on the keyboard, or press Enter (instant).
 //  * Clients pressing it get a message that only the host can start.
 // MatchHUD shows the hold progress and the Feedback text, so you can see in the headset that the press registered.
 // Creates itself at runtime, so no scene changes are needed.
@@ -13,6 +13,7 @@ public class HostStartInput : MonoBehaviour {
     public const string ButtonLabel = "A";                                   // used in every on-screen hint
     public const string VRBinding = "<XRController>{RightHand}/primaryButton"; // A on Quest Touch controllers
     public const string DesktopBinding = "<Keyboard>/enter";                 // editor testing
+    public const string DesktopHoldBinding = "<Keyboard>/a";                 // editor: hold A on the keyboard too
     public const float HoldSeconds = 1f;                                     // 0 = start on a single press
     // =============================================================================
 
@@ -36,6 +37,7 @@ public class HostStartInput : MonoBehaviour {
 
     void OnEnable() {
         vrAction = new InputAction("StartMatchVR", InputActionType.Button, VRBinding);
+        vrAction.AddBinding(DesktopHoldBinding);   // keyboard A works the same way in the editor
         desktopAction = new InputAction("StartMatchDesktop", InputActionType.Button, DesktopBinding);
         vrAction.Enable();
         desktopAction.Enable();

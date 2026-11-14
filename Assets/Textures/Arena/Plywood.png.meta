@@ -1,0 +1,17 @@
+fileFormatVersion: 2
+guid: 195d456166324f3885265e2cce664324
+TextureImporter:
+  serializedVersion: 13
+  mipmaps:
+    enableMipMap: 1
+  wrapU: 0
+  wrapV: 0
+  textureSettings:
+    serializedVersion: 2
+    filterMode: 1
+    aniso: 4
+    wrapU: 0
+    wrapV: 0
+    wrapW: 0
+  textureType: 0
+  textureShape: 1

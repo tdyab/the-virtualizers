@@ -4,9 +4,10 @@ using UnityEngine;
 
 public class PlayerAvatar : NetworkBehaviour {
     public static readonly Color[] PlayerColors = {
-        new Color(1f, .25f, .25f), new Color(.3f, .5f, 1f), new Color(.3f, 1f, .4f),
-        new Color(1f, .9f, .2f),   new Color(.8f, .4f, 1f) };
-    public static readonly string[] PlayerNames = { "Red", "Blue", "Green", "Yellow", "Purple" };
+        // Paintball paint: same colours as the lobby splats.
+        new Color(1.00f, 0.42f, 0.07f), new Color(1.00f, 0.24f, 0.50f), new Color(0.12f, 0.78f, 1.00f),
+        new Color(0.55f, 0.89f, 0.17f), new Color(1.00f, 0.86f, 0.10f) };
+    public static readonly string[] PlayerNames = { "Orange", "Pink", "Blue", "Green", "Yellow" };
 
     [Header("Synced parts (each has OwnerNetworkTransform)")]
     public Transform head;

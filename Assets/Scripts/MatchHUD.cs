@@ -44,6 +44,12 @@ public class MatchHUD : MonoBehaviour {
     static readonly Color PanelColor = new Color(0.04f, 0.06f, 0.10f, 0.86f);
     const string Accent = "#FFD54A";   // yellow: host, winner, prompts
 
+    // Lobby: paintball look (ink-dark panel, bright paint).
+    const string PaintOrange = "#FF6A13", PaintPink = "#FF3D7F", PaintLime = "#8BE32B";
+    static readonly Color LobbyInk = new Color(0.07f, 0.07f, 0.10f, 0.93f);
+    static Color[] SplatColors => PlayerAvatar.PlayerColors;   // orange, pink, blue, green, yellow
+    static Sprite roundedSprite;
+
     Canvas canvas;
     Material uiMat, textMat;
 
@@ -53,6 +59,10 @@ public class MatchHUD : MonoBehaviour {
     // Lobby
     GameObject lobbyPanel;
     TMP_Text lobbyTitle, lobbyCount, lobbyNames, lobbyRole, controls;
+    RectTransform countSplat;
+    readonly List<(RectTransform rt, float rot, float phase)> lobbySplats = new List<(RectTransform, float, float)>();
+    int lastLobbyCount = -1;
+    float countPopTime = -10f;
     // Game over
     GameObject endPanel;
     TMP_Text endTitle, endReason, endTable, endFooter;
@@ -97,15 +107,37 @@ public class MatchHUD : MonoBehaviour {
         ranking = MakeText("Ranking", root, Deg(rankingAngle.x, rankingAngle.y), new Vector2(300, 260), 26, TextAlignmentOptions.TopLeft);
         ranking.rectTransform.pivot = new Vector2(0f, 1f);
 
-        // --- Lobby: two columns, status on the left, how to play on the right ---
-        var lobby = MakePanel("LobbyPanel", root, Vector2.zero, new Vector2(960, 580));
+        // --- Lobby: paintball style. Two columns, status on the left, how to play on the right ---
+        var lobby = new GameObject("Lobby", typeof(RectTransform)).GetComponent<RectTransform>();
+        lobby.SetParent(root, false);
         lobbyPanel = lobby.gameObject;
-        lobbyTitle = MakeText("Title", lobby, new Vector2(-240, 255), new Vector2(420, 50), 30, TextAlignmentOptions.Center);
-        lobbyCount = MakeText("Count", lobby, new Vector2(-240, 125), new Vector2(420, 170), 150, TextAlignmentOptions.Center);
-        lobbyNames = MakeText("Names", lobby, new Vector2(-240, -70), new Vector2(420, 140), 24, TextAlignmentOptions.Top);
-        lobbyRole = MakeText("Role", lobby, new Vector2(-240, -205), new Vector2(440, 100), 32, TextAlignmentOptions.Center);
-        MakePanel("Divider", lobby, new Vector2(0, 0), new Vector2(3, 500)).GetComponent<Image>().color = new Color(1, 1, 1, 0.15f);
-        controls = MakeText("Controls", lobby, new Vector2(245, -10), new Vector2(450, 540), 22, TextAlignmentOptions.TopLeft);
+        // Splats peeking out from behind the panel corners.
+        LobbySplat(lobby, new Vector2(-470, 270), 260, 0, 15f);
+        LobbySplat(lobby, new Vector2(490, -265), 300, 2, -40f);
+        LobbySplat(lobby, new Vector2(500, 250), 150, 3, 70f);
+        LobbySplat(lobby, new Vector2(-480, -280), 170, 1, 200f);
+        var rim = MakePanel("Rim", lobby, Vector2.zero, new Vector2(976, 596));
+        Round(rim, Hex(SplatColors[0]));
+        var panel = MakePanel("LobbyPanel", lobby, Vector2.zero, new Vector2(960, 580));
+        Round(panel, null);
+        panel.GetComponent<Image>().color = LobbyInk;
+
+        countSplat = MakeImage("CountSplat", panel, new Vector2(-240, 120), new Vector2(330, 330), PaintSplats.Splat(4), SplatColors[0]);
+        lobbyTitle = MakeText("Title", panel, new Vector2(-240, 245), new Vector2(440, 50), 30, TextAlignmentOptions.Center);
+        lobbyCount = MakeText("Count", panel, new Vector2(-240, 125), new Vector2(420, 170), 150, TextAlignmentOptions.Center);
+        // Outline via our own copy of the text material, so it keeps "draw on top of walls".
+        var outlined = new Material(lobbyCount.fontSharedMaterial);
+        outlined.EnableKeyword(ShaderUtilities.Keyword_Outline);
+        outlined.SetFloat(ShaderUtilities.ID_OutlineWidth, 0.18f);
+        outlined.SetColor(ShaderUtilities.ID_OutlineColor, new Color32(20, 18, 28, 255));
+        if (alwaysOnTop) outlined.SetFloat("unity_GUIZTestMode", (float)CompareFunction.Always);
+        lobbyCount.fontSharedMaterial = outlined;
+        lobbyNames = MakeText("Names", panel, new Vector2(-240, -80), new Vector2(420, 140), 24, TextAlignmentOptions.Top);
+        lobbyNames.lineSpacing = 18f;
+        lobbyRole = MakeText("Role", panel, new Vector2(-240, -210), new Vector2(440, 100), 30, TextAlignmentOptions.Center);
+        var divider = MakePanel("Divider", panel, new Vector2(0, 0), new Vector2(4, 480));
+        divider.GetComponent<Image>().color = new Color(1f, 0.42f, 0.07f, 0.35f);
+        controls = MakeText("Controls", panel, new Vector2(245, -10), new Vector2(450, 540), 22, TextAlignmentOptions.TopLeft);
 
         // --- Game over ---
         var end = MakePanel("EndPanel", root, Vector2.zero, new Vector2(900, 580));
@@ -124,7 +156,7 @@ public class MatchHUD : MonoBehaviour {
         holdBar = MakePanel("HoldBar", root, new Vector2(0, -272), new Vector2(360, 18));
         holdBar.GetComponent<Image>().color = new Color(1, 1, 1, 0.2f);
         holdFill = MakePanel("Fill", holdBar, Vector2.zero, new Vector2(360, 18));
-        holdFill.GetComponent<Image>().color = new Color(1f, 0.84f, 0.29f, 1f);
+        holdFill.GetComponent<Image>().color = new Color(1f, 0.42f, 0.07f, 1f);   // paint orange
         holdFill.anchorMin = holdFill.anchorMax = holdFill.pivot = new Vector2(0f, 0.5f);
         holdFill.anchoredPosition = Vector2.zero;
         toast = MakeText("Toast", root, Deg(0, toastPitch), new Vector2(900, 60), 30, TextAlignmentOptions.Center);
@@ -143,6 +175,52 @@ public class MatchHUD : MonoBehaviour {
         rt.sizeDelta = size;
         rt.anchoredPosition = pos;
         return rt;
+    }
+
+    Image MakeImageRaw(string name, Transform parent, Vector2 pos, Vector2 size, Sprite sprite, Color color) {
+        var rt = MakePanel(name, parent, pos, size);
+        var img = rt.GetComponent<Image>();
+        img.sprite = sprite;
+        img.color = color;
+        img.preserveAspect = true;
+        return img;
+    }
+
+    RectTransform MakeImage(string name, Transform parent, Vector2 pos, Vector2 size, Sprite sprite, Color color) =>
+        MakeImageRaw(name, parent, pos, size, sprite, color).rectTransform;
+
+    void LobbySplat(Transform parent, Vector2 pos, float size, int colorIndex, float rot) {
+        var rt = MakeImage("Splat", parent, pos, new Vector2(size, size), PaintSplats.Splat(colorIndex + 1), SplatColors[colorIndex % SplatColors.Length]);
+        rt.localEulerAngles = new Vector3(0, 0, rot);
+        lobbySplats.Add((rt, rot, colorIndex * 1.7f));
+    }
+
+    // Rounded corners (9-sliced sprite built in code). rimHex = null keeps the panel's own colour.
+    static void Round(RectTransform rt, string rimHex) {
+        var img = rt.GetComponent<Image>();
+        img.sprite = RoundedSprite;
+        img.type = Image.Type.Sliced;
+        img.pixelsPerUnitMultiplier = 0.5f;   // bigger corner radius at canvas scale
+        if (rimHex != null && ColorUtility.TryParseHtmlString(rimHex, out Color c)) img.color = c;
+    }
+
+    static Sprite RoundedSprite {
+        get {
+            if (roundedSprite != null) return roundedSprite;
+            const int n = 64, r = 24;
+            var tex = new Texture2D(n, n, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear, name = "Rounded" };
+            var px = new Color32[n * n];
+            for (int y = 0; y < n; y++)
+                for (int x = 0; x < n; x++) {
+                    float cx = Mathf.Clamp(x + 0.5f, r, n - r), cy = Mathf.Clamp(y + 0.5f, r, n - r);
+                    float d = Mathf.Sqrt((x + 0.5f - cx) * (x + 0.5f - cx) + (y + 0.5f - cy) * (y + 0.5f - cy));
+                    px[y * n + x] = new Color32(255, 255, 255, (byte)(255f * Mathf.Clamp01(r - d + 0.5f)));
+                }
+            tex.SetPixels32(px);
+            tex.Apply(false, true);
+            roundedSprite = Sprite.Create(tex, new Rect(0, 0, n, n), new Vector2(0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect, new Vector4(r, r, r, r));
+            return roundedSprite;
+        }
     }
 
     TMP_Text MakeText(string name, Transform parent, Vector2 pos, Vector2 size, float fontSize, TextAlignmentOptions align) {
@@ -236,6 +314,20 @@ public class MatchHUD : MonoBehaviour {
             center.text = "";
         }
 
+        // Lobby: splats breathe, the count splat wobbles and pops when someone joins.
+        if (state == MatchState.Lobby) {
+            float now = Time.time;
+            foreach (var (rt, rot, phase) in lobbySplats) {
+                rt.localScale = Vector3.one * (1f + 0.035f * Mathf.Sin(now * 1.6f + phase));
+                rt.localEulerAngles = new Vector3(0, 0, rot + 3f * Mathf.Sin(now * 0.7f + phase));
+            }
+            float pop = Mathf.Clamp01(1f - (now - countPopTime) / 0.45f);   // 1 -> 0 after a join
+            float bounce = Mathf.Sin(pop * Mathf.PI) * 0.22f;
+            countSplat.localScale = Vector3.one * (1f + 0.04f * Mathf.Sin(now * 2.2f) + bounce);
+            countSplat.localEulerAngles = new Vector3(0, 0, 6f * Mathf.Sin(now * 0.9f));
+            lobbyCount.rectTransform.localScale = Vector3.one * (1f + bounce * 0.6f);
+        }
+
         // Hold-to-start progress bar (host only, lobby or game over).
         float p = HostStartInput.HoldProgress;
         bool showBar = isHost && p > 0f && (state == MatchState.Lobby || state == MatchState.Ended);
@@ -292,22 +384,32 @@ public class MatchHUD : MonoBehaviour {
         int count = PlayerState.All.Count;
         bool enough = count >= gm.minPlayers;
 
-        lobbyTitle.text = enough ? $"<color={Accent}>READY TO START</color>" : "WAITING FOR PLAYERS";
-        lobbyCount.text = $"<b>{count}</b><size=45%><color=#FFFFFF88> / {gm.maxPlayers}</color></size>\n<size=18%>PLAYERS</size>";
+        if (count != lastLobbyCount) {
+            if (lastLobbyCount >= 0) countPopTime = Time.time;
+            lastLobbyCount = count;
+            countSplat.GetComponent<Image>().color = enough ? SplatColors[3] : SplatColors[0];   // lime when ready
+        }
 
+        lobbyTitle.text = enough
+            ? $"<b><color={PaintLime}>READY TO SPLAT!</color></b>"
+            : $"<b>WAITING FOR PLAYERS</b>";
+        lobbyCount.text = $"<b>{count}</b><size=45%><color=#FFFFFFCC> / {gm.maxPlayers}</color></size>\n<size=18%><b>PLAYERS</b></size>";
+
+        // Each player as a little coloured tag.
         var names = new StringBuilder();
         foreach (PlayerState p in PlayerState.All) {
-            string me = p == PlayerState.Local ? "  <size=80%>(YOU)</size>" : "";
-            names.AppendLine($"<color={Hex(p.PlayerColor)}>{p.DisplayName}</color>{me}");
+            string hex = ColorUtility.ToHtmlStringRGB(p.PlayerColor);
+            string me = p == PlayerState.Local ? " <size=75%>(YOU)</size>" : "";
+            names.AppendLine($"<mark=#{hex}55 padding=\"14,14,4,4\"><b><color=#{hex}>{p.DisplayName}</color></b>{me}</mark>");
         }
         lobbyNames.text = names.ToString();
 
         if (isHost) {
             lobbyRole.text = enough
-                ? $"<color={Accent}>You are the HOST</color>\n<b>{HostStartInput.HintText} to start</b>"
-                : $"<color={Accent}>You are the HOST</color>\nWaiting for {gm.minPlayers - count} more player{(gm.minPlayers - count == 1 ? "" : "s")}";
+                ? $"<color={PaintOrange}><b>You are the HOST</b></color>\n<b>{HostStartInput.HintText} to start</b>"
+                : $"<color={PaintOrange}><b>You are the HOST</b></color>\nWaiting for {gm.minPlayers - count} more player{(gm.minPlayers - count == 1 ? "" : "s")}";
         } else {
-            lobbyRole.text = "Waiting for the host\nto start the match";
+            lobbyRole.text = $"Waiting for the <color={PaintOrange}><b>host</b></color>\nto start the match";
         }
 
         controls.text = BuildControls(gm);
@@ -324,9 +426,9 @@ public class MatchHUD : MonoBehaviour {
         int mins = Mathf.RoundToInt(gm.matchSeconds / 60f);
 
         // <indent> keeps wrapped lines lined up under the description column.
-        string Row(string label, string text) => $"<b>{label}</b><indent=33%>{text}</indent>\n";
+        string Row(string label, string text) => $"<b><color={PaintPink}>{label}</color></b><indent=33%>{text}</indent>\n";
         return
-            $"<b><color={Accent}>HOW TO PLAY</color></b>\n\n" +
+            $"<b><color={PaintOrange}>HOW TO PLAY</color></b>\n\n" +
             Row("SHOOT", "Right trigger") +
             Row("AIM", "Point the right controller") +
             Row("TELEPORT", "Push a thumbstick forward, aim the arc, let go") +
