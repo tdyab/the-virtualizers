@@ -18,12 +18,19 @@ public class PlayerAvatar : NetworkBehaviour {
     public Transform body;
     public float bodyDrop = 0.75f;
 
+    [Header("Guns (one per player colour, same order as PlayerColors)")]
+    public GameObject[] gunPrefabs;
+    public float gunLength = 0.7f;
+    public Transform muzzle;
+
     [Header("Visuals")]
     public Renderer[] colorRenderers;
     public Renderer[] hideForOwner;
     public GameObject[] hideWhenDead;
 
     Color baseColor = Color.white;
+    GameObject gun;
+    Material gunMaterial;
     Coroutine flashRoutine;
 
     public override void OnNetworkSpawn() {
@@ -46,7 +53,50 @@ public class PlayerAvatar : NetworkBehaviour {
 
     public void ApplyColor(int index) {
         baseColor = PlayerColors[Mathf.Abs(index) % PlayerColors.Length];
-        foreach (var r in colorRenderers) if (r) r.material.color = baseColor; }
+        foreach (var r in colorRenderers) if (r) r.material.color = baseColor;
+        BuildGun(Mathf.Abs(index)); }
+
+    void BuildGun(int index) {
+        if (gunPrefabs == null || gunPrefabs.Length == 0 || rightHand == null) return;
+        GameObject prefab = gunPrefabs[index % gunPrefabs.Length];
+        if (prefab == null) return;
+        if (gun) Destroy(gun);
+
+        gun = Instantiate(prefab);
+        gun.name = "Gun";
+        foreach (var c in gun.GetComponentsInChildren<Collider>()) Destroy(c);
+
+        var filter = gun.GetComponentInChildren<MeshFilter>();
+        Bounds b = filter ? filter.sharedMesh.bounds : new Bounds(Vector3.zero, Vector3.one);
+        bool barrelForward = b.max.z > -b.min.z;
+        float length = Mathf.Max(0.01f, b.size.z);
+        float scale = gunLength / length;
+
+        gun.transform.SetParent(rightHand, false);
+        Vector3 hs = rightHand.lossyScale;
+        gun.transform.localScale = new Vector3(scale / hs.x, scale / hs.y, scale / hs.z);
+        gun.transform.localRotation = barrelForward ? Quaternion.identity : Quaternion.Euler(0f, 180f, 0f);
+        gun.transform.localPosition = Vector3.zero;
+
+        if (gunMaterial == null) {
+            var src = gun.GetComponentInChildren<Renderer>().sharedMaterial;
+            gunMaterial = new Material(src) { name = "Gun (player colour)" }; }
+        gunMaterial.SetTexture("_BaseMap", null);
+        gunMaterial.SetColor("_BaseColor", baseColor);
+        gunMaterial.SetFloat("_Smoothness", 0.65f);
+        gunMaterial.EnableKeyword("_EMISSION");
+        gunMaterial.SetColor("_EmissionColor", baseColor * 0.25f);
+        foreach (var r in gun.GetComponentsInChildren<Renderer>()) {
+            r.sharedMaterial = gunMaterial;
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off; }
+
+        var handRenderer = rightHand.GetComponent<Renderer>();
+        if (handRenderer) handRenderer.enabled = false;
+
+        if (muzzle != null) {
+            float tip = barrelForward ? b.max.z : -b.min.z;
+            muzzle.position = rightHand.position + rightHand.forward * (tip * scale + 0.02f) + rightHand.up * (b.center.y * scale); }
+    }
 
     public void SetVisible(bool visible) {
         foreach (var go in hideWhenDead) if (go) go.SetActive(visible); }

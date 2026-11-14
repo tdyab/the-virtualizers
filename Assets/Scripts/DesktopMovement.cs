@@ -37,6 +37,20 @@ public class DesktopMovement : MonoBehaviour
             Transform top = anchor.transform.parent.Find("Anchor_Top");
             if (top != null) anchor.teleportAnchorTransform = top;
         }
+
+        if (RunningOnHeadset())
+        {
+            foreach (var driver in FindObjectsByType<UnityEngine.InputSystem.XR.TrackedPoseDriver>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+                driver.enabled = true;
+            if (head != null) head.localRotation = Quaternion.identity;
+            enabled = false;
+        }
+    }
+
+    static bool RunningOnHeadset()
+    {
+        if (Application.platform == RuntimePlatform.Android) return true;
+        return UnityEngine.XR.XRSettings.isDeviceActive;
     }
 
     void Update()
@@ -76,7 +90,7 @@ public class DesktopMovement : MonoBehaviour
 
             bool flat = Vector3.Angle(hit.normal, Vector3.up) <= maxSlope;
             bool allowed = !sceneHasTeleportAreas || hit.collider.GetComponentInParent<BaseTeleportationInteractable>() != null;
-            if (flat && allowed) { hasTarget = true; target = hit.point; }
+            if (flat && allowed && HeadCollision.CanTeleportTo(hit.point)) { hasTarget = true; target = hit.point; }
             break;
         }
         UpdateMarker();

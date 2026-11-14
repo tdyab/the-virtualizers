@@ -27,10 +27,10 @@ public class MatchHUD : MonoBehaviour {
     [Tooltip("How far away the HUD floats, in metres. Sizes are angular, so this only changes focus depth.")]
     public float distance = 1.2f;
     [Tooltip("Top-left corner of the live score list. Quest comfortable reading zone is about +/-25 degrees.")]
-    public Vector2 rankingAngle = new Vector2(12f, -6f);
+    public Vector2 rankingAngle = new Vector2(19f, 6f);
     [Tooltip("Top-left corner of the kill feed.")]
-    public Vector2 feedAngle = new Vector2(-27f, 15f);
-    public float timerPitch = 19f;
+    public Vector2 feedAngle = new Vector2(-30f, 15f);
+    public float timerPitch = 22f;
     public float toastPitch = -20f;
 
     [Header("Behaviour")]
@@ -55,7 +55,8 @@ public class MatchHUD : MonoBehaviour {
 
     // Playing
     TMP_Text timer, feed, ranking, center;
-    RectTransform rankingBg;
+    RectTransform rankingBg, timerBg;
+    Image timerAccent, rankingAccent, lobbyRim, endRimImg, holdFillImg;
     // Lobby
     GameObject lobbyPanel;
     TMP_Text lobbyTitle, lobbyCount, lobbyNames, lobbyRole, controls;
@@ -75,6 +76,8 @@ public class MatchHUD : MonoBehaviour {
     float nextRefresh;
     MatchState lastState = MatchState.Lobby;
     float fightUntil = -1f;
+    float overtimeUntil = -1f;
+    bool lastOvertime;
 
     // ---------------------------------------------------------------- building
 
@@ -97,14 +100,25 @@ public class MatchHUD : MonoBehaviour {
         Transform root = canvas.transform;
 
         // --- Playing ---
+        var timerGlass = HudStyle.Panel("TimerBg", root, Deg(0, timerPitch), new Vector2(300, 104));
+        timerBg = (RectTransform)timerGlass.parent;
+        timerAccent = HudStyle.Rect("Accent", timerGlass, Vector2.zero, new Vector2(56f, 5f), new Color(1f, 0.42f, 0.07f), 2.5f);
+        var ta = timerAccent.rectTransform;
+        ta.anchorMin = ta.anchorMax = new Vector2(0.5f, 0f);
+        ta.pivot = new Vector2(0.5f, 0f);
+        ta.anchoredPosition = new Vector2(0f, 9f);
         timer = MakeText("Timer", root, Deg(0, timerPitch), new Vector2(700, 90), 46, TextAlignmentOptions.Center);
         feed = MakeText("Feed", root, Deg(feedAngle.x, feedAngle.y), new Vector2(460, 200), 24, TextAlignmentOptions.TopLeft);
         feed.rectTransform.pivot = new Vector2(0f, 1f);
+        feed.lineSpacing = 30f;
 
-        rankingBg = MakePanel("RankingBg", root, Deg(rankingAngle.x, rankingAngle.y), new Vector2(330, 200));
+        var rankingGlass = HudStyle.Panel("RankingBg", root, Deg(rankingAngle.x, rankingAngle.y), new Vector2(330, 200), new Color(1f, 0.42f, 0.07f));
+        rankingAccent = HudStyle.Accent(rankingGlass);
+        rankingBg = (RectTransform)rankingGlass.parent;
         rankingBg.pivot = new Vector2(0f, 1f);
-        rankingBg.anchoredPosition = Deg(rankingAngle.x, rankingAngle.y) + new Vector2(-14, 10);
+        rankingBg.anchoredPosition = Deg(rankingAngle.x, rankingAngle.y) + new Vector2(-30, 24);
         ranking = MakeText("Ranking", root, Deg(rankingAngle.x, rankingAngle.y), new Vector2(300, 260), 26, TextAlignmentOptions.TopLeft);
+        ranking.lineSpacing = 12f;
         ranking.rectTransform.pivot = new Vector2(0f, 1f);
 
         // --- Lobby: paintball style. Two columns, status on the left, how to play on the right ---
@@ -118,6 +132,7 @@ public class MatchHUD : MonoBehaviour {
         LobbySplat(lobby, new Vector2(-480, -280), 170, 1, 200f);
         var rim = MakePanel("Rim", lobby, Vector2.zero, new Vector2(976, 596));
         Round(rim, Hex(SplatColors[0]));
+        lobbyRim = rim.GetComponent<Image>();
         var panel = MakePanel("LobbyPanel", lobby, Vector2.zero, new Vector2(960, 580));
         Round(panel, null);
         panel.GetComponent<Image>().color = LobbyInk;
@@ -140,8 +155,19 @@ public class MatchHUD : MonoBehaviour {
         controls = MakeText("Controls", panel, new Vector2(245, -10), new Vector2(450, 540), 22, TextAlignmentOptions.TopLeft);
 
         // --- Game over ---
-        var end = MakePanel("EndPanel", root, Vector2.zero, new Vector2(900, 580));
-        endPanel = end.gameObject;
+        var endRoot = new GameObject("End", typeof(RectTransform)).GetComponent<RectTransform>();
+        endRoot.SetParent(root, false);
+        endPanel = endRoot.gameObject;
+        LobbySplat(endRoot, new Vector2(-440, 270), 240, 4, -20f);
+        LobbySplat(endRoot, new Vector2(455, -270), 280, 1, 35f);
+        LobbySplat(endRoot, new Vector2(470, 240), 140, 2, 80f);
+        LobbySplat(endRoot, new Vector2(-460, -260), 160, 3, 160f);
+        var endRim = MakePanel("Rim", endRoot, Vector2.zero, new Vector2(916, 596));
+        Round(endRim, PaintPink);
+        endRimImg = endRim.GetComponent<Image>();
+        var end = MakePanel("EndPanel", endRoot, Vector2.zero, new Vector2(900, 580));
+        Round(end, null);
+        end.GetComponent<Image>().color = LobbyInk;
         endTitle = MakeText("Title", end, new Vector2(0, 220), new Vector2(860, 100), 72, TextAlignmentOptions.Center);
         endReason = MakeText("Reason", end, new Vector2(0, 150), new Vector2(860, 40), 26, TextAlignmentOptions.Center);
         endTable = MakeText("Table", end, new Vector2(0, -20), new Vector2(760, 280), 30, TextAlignmentOptions.TopLeft);
@@ -156,7 +182,8 @@ public class MatchHUD : MonoBehaviour {
         holdBar = MakePanel("HoldBar", root, new Vector2(0, -272), new Vector2(360, 18));
         holdBar.GetComponent<Image>().color = new Color(1, 1, 1, 0.2f);
         holdFill = MakePanel("Fill", holdBar, Vector2.zero, new Vector2(360, 18));
-        holdFill.GetComponent<Image>().color = new Color(1f, 0.42f, 0.07f, 1f);   // paint orange
+        holdFillImg = holdFill.GetComponent<Image>();
+        holdFillImg.color = new Color(1f, 0.42f, 0.07f, 1f);
         holdFill.anchorMin = holdFill.anchorMax = holdFill.pivot = new Vector2(0f, 0.5f);
         holdFill.anchoredPosition = Vector2.zero;
         toast = MakeText("Toast", root, Deg(0, toastPitch), new Vector2(900, 60), 30, TextAlignmentOptions.Center);
@@ -189,6 +216,14 @@ public class MatchHUD : MonoBehaviour {
     RectTransform MakeImage(string name, Transform parent, Vector2 pos, Vector2 size, Sprite sprite, Color color) =>
         MakeImageRaw(name, parent, pos, size, sprite, color).rectTransform;
 
+    static void Rim(RectTransform rt, string hex) {
+        var o = rt.gameObject.AddComponent<Outline>();
+        ColorUtility.TryParseHtmlString(hex, out Color c);
+        o.effectColor = c;
+        o.effectDistance = new Vector2(4f, -4f);
+        o.useGraphicAlpha = false;
+    }
+
     void LobbySplat(Transform parent, Vector2 pos, float size, int colorIndex, float rot) {
         var rt = MakeImage("Splat", parent, pos, new Vector2(size, size), PaintSplats.Splat(colorIndex + 1), SplatColors[colorIndex % SplatColors.Length]);
         rt.localEulerAngles = new Vector3(0, 0, rot);
@@ -196,13 +231,35 @@ public class MatchHUD : MonoBehaviour {
     }
 
     // Rounded corners (9-sliced sprite built in code). rimHex = null keeps the panel's own colour.
-    static void Round(RectTransform rt, string rimHex) {
+    internal static void Round(RectTransform rt, string rimHex) {
         var img = rt.GetComponent<Image>();
         img.sprite = RoundedSprite;
         img.type = Image.Type.Sliced;
         img.pixelsPerUnitMultiplier = 0.5f;   // bigger corner radius at canvas scale
         if (rimHex != null && ColorUtility.TryParseHtmlString(rimHex, out Color c)) img.color = c;
     }
+
+    static Sprite circleSprite;
+    internal static Sprite CircleSprite {
+        get {
+            if (circleSprite != null) return circleSprite;
+            const int n = 128;
+            var tex = new Texture2D(n, n, TextureFormat.RGBA32, true) { wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Trilinear, name = "Circle" };
+            var px = new Color32[n * n];
+            for (int y = 0; y < n; y++)
+                for (int x = 0; x < n; x++) {
+                    float dx = x + 0.5f - n / 2f, dy = y + 0.5f - n / 2f;
+                    float a = Mathf.Clamp01(n / 2f - 1f - Mathf.Sqrt(dx * dx + dy * dy));
+                    px[y * n + x] = new Color32(255, 255, 255, (byte)(255f * a));
+                }
+            tex.SetPixels32(px);
+            tex.Apply(true, true);
+            circleSprite = Sprite.Create(tex, new Rect(0, 0, n, n), new Vector2(0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect);
+            return circleSprite;
+        }
+    }
+
+    internal static Sprite RoundedSpriteShared => RoundedSprite;
 
     static Sprite RoundedSprite {
         get {
@@ -248,6 +305,7 @@ public class MatchHUD : MonoBehaviour {
     void HideAll() {
         timer.text = feed.text = ranking.text = center.text = toast.text = "";
         rankingBg.gameObject.SetActive(false);
+        timerBg.gameObject.SetActive(false);
         lobbyPanel.SetActive(false);
         endPanel.SetActive(false);
         holdBar.gameObject.SetActive(false);
@@ -279,6 +337,9 @@ public class MatchHUD : MonoBehaviour {
         MatchState state = gm.State.Value;
         if (lastState == MatchState.Countdown && state == MatchState.Playing) fightUntil = Time.time + fightSeconds;
         lastState = state;
+        bool ot = gm.Overtime.Value && state == MatchState.Playing;
+        if (ot && !lastOvertime) overtimeUntil = Time.time + 2f;
+        lastOvertime = ot;
 
         AnimateEveryFrame(gm, state, nm.IsServer);
 
@@ -290,9 +351,10 @@ public class MatchHUD : MonoBehaviour {
     // Re-applied every frame so you can tune the angles live in the Inspector (Play mode, select "MatchHUD").
     void ApplyPlacement() {
         timer.rectTransform.anchoredPosition = Deg(0, timerPitch);
+        timerBg.anchoredPosition = Deg(0, timerPitch);
         feed.rectTransform.anchoredPosition = Deg(feedAngle.x, feedAngle.y);
         ranking.rectTransform.anchoredPosition = Deg(rankingAngle.x, rankingAngle.y);
-        rankingBg.anchoredPosition = Deg(rankingAngle.x, rankingAngle.y) + new Vector2(-14, 10);
+        rankingBg.anchoredPosition = Deg(rankingAngle.x, rankingAngle.y) + new Vector2(-30, 24);
         toast.rectTransform.anchoredPosition = Deg(0, toastPitch);
     }
 
@@ -305,6 +367,11 @@ public class MatchHUD : MonoBehaviour {
             center.text = $"<size=25%>GET READY</size>\n<b>{n}</b>";
             center.rectTransform.localScale = Vector3.one * (1f + 0.35f * frac);
             center.color = Color.white;
+        } else if (Time.time < overtimeUntil) {
+            float k = (overtimeUntil - Time.time) / 2f;
+            center.text = $"<size=40%>DRAW!</size>\n<b>OVERTIME</b>\n<size=30%>+{Mathf.RoundToInt(gm.overtimeSeconds)} SECONDS</size>";
+            center.rectTransform.localScale = Vector3.one * (0.6f + 0.25f * k * k);
+            center.color = new Color(1f, 0.84f, 0.29f, Mathf.Clamp01(k * 3f));
         } else if (Time.time < fightUntil) {
             float k = (fightUntil - Time.time) / fightSeconds;      // 1 -> 0
             center.text = "<b>FIGHT!</b>";
@@ -336,7 +403,8 @@ public class MatchHUD : MonoBehaviour {
 
         // Short confirmation / error message about the start button.
         float age = Time.time - HostStartInput.FeedbackTime;
-        toast.text = age < toastSeconds ? HostStartInput.Feedback : "";
+        toast.text = age < toastSeconds && !string.IsNullOrEmpty(HostStartInput.Feedback)
+            ? $"<mark=#0E0F15E0 padding=\"22,22,9,9\">{HostStartInput.Feedback}</mark>" : "";
         toast.alpha = Mathf.Clamp01((toastSeconds - age) * 2f);
     }
 
@@ -344,21 +412,36 @@ public class MatchHUD : MonoBehaviour {
         // Kill feed: last few messages, each disappears after feedSeconds.
         while (feedQueue.Count > 0 && Time.time - feedQueue.Peek().time > feedSeconds) feedQueue.Dequeue();
         var sb = new StringBuilder();
-        foreach (var e in feedQueue) sb.AppendLine(e.msg);
+        foreach (var e in feedQueue) sb.AppendLine($"<mark=#0E0F15E0 padding=\"16,16,7,7\">{e.msg}</mark>");
         feed.text = sb.ToString();
 
         // Timer (only while playing).
         if (state == MatchState.Playing) {
             int t = Mathf.Max(0, Mathf.CeilToInt(gm.TimeLeft.Value));
             string col = t <= 30 ? "#FF5A4A" : "#FFFFFF";
-            timer.text = $"<color={col}><b>{t / 60}:{t % 60:00}</b></color>\n<size=50%>FIRST TO {gm.killsToWin} TAGS</size>";
+            timer.text = gm.Overtime.Value
+                ? $"<color=#FFD54A><b>{t / 60}:{t % 60:00}</b></color>\n<size=36%><cspace=0.35em><b><color=#FFD54A>OVERTIME</color><color=#FFFFFF99>  NEXT TAG LEADS</color></b></cspace></size>"
+                : $"<color={col}><b>{t / 60}:{t % 60:00}</b></color>\n<size=36%><cspace=0.35em><b><color=#FFFFFF99>FIRST TO {gm.killsToWin} TAGS</color></b></cspace></size>";
         } else timer.text = "";
+        timerBg.gameObject.SetActive(state == MatchState.Playing);
+        if (state == MatchState.Playing) {
+            timer.ForceMeshUpdate();
+            Vector2 size = timer.GetRenderedValues(false);
+            timerBg.sizeDelta = new Vector2(Mathf.Max(size.x + 72f, 220f), size.y + 44f);
+        }
+        if (state == MatchState.Playing)
+            timerAccent.color = HudStyle.Mine;
+        Color mine = HudStyle.Mine;
+        rankingAccent.color = mine;
+        lobbyRim.color = mine;
+        endRimImg.color = mine;
+        holdFillImg.color = mine;
 
         // Live score list (only while playing).
         bool showRanking = state == MatchState.Playing;
         rankingBg.gameObject.SetActive(showRanking);
         ranking.text = showRanking ? BuildRanking(gm) : "";
-        if (showRanking) rankingBg.sizeDelta = new Vector2(330, 52 + 34 * PlayerState.All.Count);
+        if (showRanking) rankingBg.sizeDelta = new Vector2(362, 88 + 40 * PlayerState.All.Count);
 
         lobbyPanel.SetActive(state == MatchState.Lobby);
         if (state == MatchState.Lobby) BuildLobby(gm, isHost);
@@ -372,10 +455,10 @@ public class MatchHUD : MonoBehaviour {
     static string Hex(Color c) => "#" + ColorUtility.ToHtmlStringRGB(c);
 
     string BuildRanking(GameManager gm) {
-        var sb = new StringBuilder("<size=75%><color=#FFFFFF99>SCORE</color></size>\n");
+        var sb = new StringBuilder($"<size=55%><cspace=0.5em><b><color={HudStyle.MineHex}>SCOREBOARD</color></b></cspace></size>\n");
         foreach (PlayerState p in gm.Ranked()) {
-            string row = $"{gm.RankOf(p)}<pos=12%><color={Hex(p.PlayerColor)}>{p.DisplayName}</color><pos=82%>{p.Kills.Value}";
-            sb.AppendLine(p == PlayerState.Local ? $"<b>{row}</b>" : row);
+            string row = $"<color=#FFFFFF77>{gm.RankOf(p)}</color><pos=12%><color={Hex(p.PlayerColor)}>{p.DisplayName}</color><pos=82%><b>{p.Kills.Value}</b>";
+            sb.AppendLine(p == PlayerState.Local ? $"<mark=#FFFFFF1A padding=\"10,30,4,4\"><b>{row}</b></mark>" : row);
         }
         return sb.ToString();
     }
@@ -387,7 +470,7 @@ public class MatchHUD : MonoBehaviour {
         if (count != lastLobbyCount) {
             if (lastLobbyCount >= 0) countPopTime = Time.time;
             lastLobbyCount = count;
-            countSplat.GetComponent<Image>().color = enough ? SplatColors[3] : SplatColors[0];   // lime when ready
+            countSplat.GetComponent<Image>().color = enough ? SplatColors[3] : HudStyle.Mine;
         }
 
         lobbyTitle.text = enough
@@ -406,10 +489,10 @@ public class MatchHUD : MonoBehaviour {
 
         if (isHost) {
             lobbyRole.text = enough
-                ? $"<color={PaintOrange}><b>You are the HOST</b></color>\n<b>{HostStartInput.HintText} to start</b>"
-                : $"<color={PaintOrange}><b>You are the HOST</b></color>\nWaiting for {gm.minPlayers - count} more player{(gm.minPlayers - count == 1 ? "" : "s")}";
+                ? $"<color={HudStyle.MineHex}><b>You are the HOST</b></color>\n<b>{HostStartInput.HintText} to start</b>"
+                : $"<color={HudStyle.MineHex}><b>You are the HOST</b></color>\nWaiting for {gm.minPlayers - count} more player{(gm.minPlayers - count == 1 ? "" : "s")}";
         } else {
-            lobbyRole.text = $"Waiting for the <color={PaintOrange}><b>host</b></color>\nto start the match";
+            lobbyRole.text = $"Waiting for the <color={HudStyle.MineHex}><b>host</b></color>\nto start the match";
         }
 
         controls.text = BuildControls(gm);
@@ -445,7 +528,12 @@ public class MatchHUD : MonoBehaviour {
         PlayerState winner = null;
         foreach (PlayerState p in PlayerState.All) if (p.OwnerClientId == winnerId) winner = p;
 
-        if (winnerId == GameManager.NoWinner || winner == null) {
+        int topKills = -1;
+        foreach (PlayerState p in PlayerState.All) topKills = Mathf.Max(topKills, p.Kills.Value);
+        if (gm.IsTie.Value) {
+            endTitle.text = $"<b><color={Accent}>IT'S A TIE!</color></b>";
+            endReason.text = "Still tied after overtime";
+        } else if (winnerId == GameManager.NoWinner || winner == null) {
             endTitle.text = "<b>MATCH OVER</b>";
             endReason.text = "";
         } else {
@@ -455,7 +543,7 @@ public class MatchHUD : MonoBehaviour {
                 : $"<b><color={Hex(winner.PlayerColor)}>{winner.DisplayName}</color> WINS!</b>";
             endReason.text = winner.Kills.Value >= gm.killsToWin
                 ? $"First to {gm.killsToWin} tags"
-                : "Most tags when the match ended";
+                : gm.Overtime.Value ? "Won in overtime" : "Most tags when the match ended";
         }
 
         var sb = new StringBuilder();
@@ -465,7 +553,7 @@ public class MatchHUD : MonoBehaviour {
             string name = $"<color={Hex(p.PlayerColor)}>{p.DisplayName}</color>" + (me ? "  <size=70%>(YOU)</size>" : "");
             string row = $"{gm.RankOf(p)}<pos=9%>{name}<pos=62%>{p.Kills.Value}<pos=80%>{p.Deaths.Value}";
             if (me) row = $"<b>{row}</b>";
-            if (p == winner) row = $"<mark=#FFD54A30>{row}</mark>";
+            if (p == winner || (gm.IsTie.Value && p.Kills.Value == topKills)) row = $"<mark=#FFD54A30>{row}</mark>";
             sb.AppendLine(row);
         }
         endTable.text = sb.ToString();

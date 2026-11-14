@@ -1021,6 +1021,14 @@ MonoBehaviour:
   rightHand: {fileID: 4437616533401315472}
   body: {fileID: 4007950116792356918}
   bodyDrop: 0.75
+  gunPrefabs:
+  - {fileID: 4831969468043449689, guid: e705598fb7f525243a9aca3bc4f57898, type: 3}
+  - {fileID: 7286858483345856362, guid: c81501b4dad739b4a9538398b2495138, type: 3}
+  - {fileID: 7209185108777654096, guid: c214f39d559297a43a03f834d9dd4e0c, type: 3}
+  - {fileID: 3368331593303936535, guid: 7aac2d89d5917204584d58bd46604c2e, type: 3}
+  - {fileID: 4008194683298584516, guid: f4211f8783cdbf2428a00a62f5c84c54, type: 3}
+  gunLength: 0.7
+  muzzle: {fileID: 5402224490331824963}
   colorRenderers:
   - {fileID: 1603746774716491375}
   - {fileID: 386849045558244478}

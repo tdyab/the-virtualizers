@@ -72,7 +72,7 @@ public class LaserGun : NetworkBehaviour {
         if (!IsOwner || fireAction == null) return;
 
         UpdateAim();
-        if (fireAction.WasPressedThisFrame()) TryFire();
+        if (fireAction.WasPressedThisFrame() && !SettingsMenu.IsOpen) TryFire();
     }
 
     void TryFire() {

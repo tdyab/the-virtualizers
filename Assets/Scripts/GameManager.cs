@@ -15,12 +15,15 @@ public class GameManager : NetworkBehaviour {
     public int killsToWin = 10;
     public float matchSeconds = 180f;
     public float countdownSeconds = 3f;
+    public float overtimeSeconds = 30f;
     public int minPlayers = 2;
     public int maxPlayers = 5;
 
     public NetworkVariable<MatchState> State = new NetworkVariable<MatchState>(MatchState.Lobby);
     public NetworkVariable<float> TimeLeft = new NetworkVariable<float>(0f);
     public NetworkVariable<ulong> WinnerId = new NetworkVariable<ulong>(NoWinner);
+    public NetworkVariable<bool> Overtime = new NetworkVariable<bool>(false);
+    public NetworkVariable<bool> IsTie = new NetworkVariable<bool>(false);
 
     public event Action<string> KillFeed;
     public bool DamageEnabled => State.Value == MatchState.Playing;
@@ -43,7 +46,14 @@ public class GameManager : NetworkBehaviour {
     }
 
     public override void OnNetworkSpawn() {
-        if (IsServer) NetworkManager.OnClientDisconnectCallback += OnClientLeft; }
+        if (!IsServer) return;
+        NetworkManager.OnClientDisconnectCallback += OnClientLeft;
+        StopAllCoroutines();
+        State.Value = MatchState.Lobby;
+        TimeLeft.Value = 0f;
+        WinnerId.Value = NoWinner;
+        Overtime.Value = false;
+        IsTie.Value = false; }
 
     public override void OnNetworkDespawn() {
         if (IsServer && NetworkManager != null) NetworkManager.OnClientDisconnectCallback -= OnClientLeft; }
@@ -64,6 +74,8 @@ public class GameManager : NetworkBehaviour {
     IEnumerator MatchRoutine() {
         foreach (var p in PlayerState.All.ToList()) p.ServerResetForNewMatch(); // scores 0, back to own spawn
         WinnerId.Value = NoWinner;
+        Overtime.Value = false;
+        IsTie.Value = false;
 
         State.Value = MatchState.Countdown;
         TimeLeft.Value = countdownSeconds;
@@ -83,7 +95,19 @@ public class GameManager : NetworkBehaviour {
         while (State.Value == MatchState.Playing && TimeLeft.Value > 0) {
             yield return null;
             TimeLeft.Value -= Time.deltaTime; }
-        if (State.Value == MatchState.Playing) ServerEndMatch(Leader()); // time ran out
+
+        if (State.Value == MatchState.Playing && TopTied()) {
+            Overtime.Value = true;
+            TimeLeft.Value = overtimeSeconds;
+            AnnounceRpc($"DRAW! {Mathf.RoundToInt(overtimeSeconds)}s OVERTIME");
+            while (State.Value == MatchState.Playing && TimeLeft.Value > 0) {
+                yield return null;
+                TimeLeft.Value -= Time.deltaTime; }
+        }
+
+        if (State.Value == MatchState.Playing) {
+            if (TopTied()) ServerEndTie();
+            else ServerEndMatch(Leader()); }
     }
 
     public void ServerRegisterKill(ulong killerId, ulong victimId) {
@@ -96,7 +120,20 @@ public class GameManager : NetworkBehaviour {
         }
     }
 
+    public bool TopTied() {
+        var r = Ranked();
+        return r.Count >= 2 && r[0].Kills.Value == r[1].Kills.Value;
+    }
+
+    void ServerEndTie() {
+        WinnerId.Value = NoWinner;
+        IsTie.Value = true;
+        State.Value = MatchState.Ended;
+        AnnounceRpc("IT'S A TIE!");
+    }
+
     void ServerEndMatch(ulong winner) {
+        IsTie.Value = false;
         WinnerId.Value = winner;
         State.Value = MatchState.Ended;
         AnnounceRpc(winner == NoWinner ? "Match over" : $"{NameOf(winner)} WINS!");
@@ -147,8 +184,9 @@ ulong Leader() {
             case MatchState.Countdown: return $"Starting in {Mathf.CeilToInt(TimeLeft.Value)}...";
             case MatchState.Playing:
                 int t = Mathf.Max(0, Mathf.CeilToInt(TimeLeft.Value));
-                return $"Time {t / 60}:{t % 60:00}   First to {killsToWin}";
+                return Overtime.Value ? $"OVERTIME {t}s" : $"Time {t / 60}:{t % 60:00}   First to {killsToWin}";
             case MatchState.Ended:
+                if (IsTie.Value) return "It's a tie!";
                 return WinnerId.Value == NoWinner ? "Match over" : $"WINNER: {NameOf(WinnerId.Value)}";
         }
         return "";

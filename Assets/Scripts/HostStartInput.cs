@@ -58,7 +58,7 @@ public class HostStartInput : MonoBehaviour {
         var nm = NetworkManager.Singleton;
         var gm = GameManager.Instance;
         bool ready = nm != null && nm.IsListening && gm != null && gm.IsSpawned;
-        if (!ready) { heldFor = 0f; HoldProgress = 0f; return; }
+        if (!ready || SettingsMenu.IsOpen) { heldFor = 0f; HoldProgress = 0f; return; }
 
         bool canStartNow = gm.State.Value == MatchState.Lobby || gm.State.Value == MatchState.Ended;
         bool isHost = nm.IsServer;

@@ -22,37 +22,101 @@ public class NetworkBootstrap : MonoBehaviour {
 
     public string Status { get; private set; } = "Starting...";
 
+    [Header("Host leaves")]
+    [Tooltip("Seconds each remaining player waits per place in line before joining the new host.")]
+    public float migrationStagger = 2.5f;
+
     ISession session;
-    bool busy;
+    bool busy, quitting, migrating;
+    int generation;
+    int mySlot = -1;
+    readonly System.Collections.Generic.List<int> otherSlots = new System.Collections.Generic.List<int>();
+    int hostSlot = -1;
+
+    string SessionId(int gen) => gen == 0 ? sessionName : $"{sessionName}-{gen}";
 
     async void Start() {
-        NetworkManager.Singleton.OnClientStopped += wasHost => {
-            session = null;
-            Status = "Disconnected. Press Connect."; };
-        if (autoConnect && mode == Mode.RelaySession) await ConnectRelay();
+        NetworkManager.Singleton.OnClientStopped += OnStopped;
+        if (autoConnect && mode == Mode.RelaySession) await ConnectWithRetry(-1);
+    }
+
+    void OnDestroy() {
+        if (NetworkManager.Singleton != null) NetworkManager.Singleton.OnClientStopped -= OnStopped; }
+
+    void TrackSlots() {
+        var nm = NetworkManager.Singleton;
+        if (nm == null || !nm.IsListening || nm.IsServer) return;
+        otherSlots.Clear();
+        hostSlot = -1;
+        foreach (var p in PlayerState.All) {
+            if (p == null || p.SpawnIndex.Value < 0) continue;
+            if (p == PlayerState.Local) mySlot = p.SpawnIndex.Value;
+            else if (p.OwnerClientId == NetworkManager.ServerClientId) hostSlot = p.SpawnIndex.Value;
+            else otherSlots.Add(p.SpawnIndex.Value); }
+    }
+
+    void OnStopped(bool wasHost) {
+        var old = session;
+        session = null;
+        if (quitting) return;
+        if (wasHost || mode != Mode.RelaySession || !autoConnect || migrating) {
+            Status = "Disconnected. Press Connect.";
+            return; }
+        _ = MigrateToNewHost(old);
+    }
+
+    async Task MigrateToNewHost(ISession old) {
+        migrating = true;
+        try {
+            int place = 0;
+            foreach (int s in otherSlots) if (mySlot >= 0 && s < mySlot) place++;
+            Status = place == 0 ? "Host left. You are the new host..." : "Host left. Joining the new host...";
+            Debug.Log($"[NetworkBootstrap] host left; my slot {mySlot}, place in line {place}");
+
+            if (old != null) { try { await old.LeaveAsync(); } catch (Exception) { } }
+            while (NetworkManager.Singleton.ShutdownInProgress) await Task.Delay(100);
+
+            generation++;
+            await Task.Delay(TimeSpan.FromSeconds(0.5f + place * migrationStagger));
+            await ConnectWithRetry(generation);
+        }
+        finally {
+            migrating = false; }
+    }
+
+    async Task ConnectWithRetry(int gen) {
+        for (int attempt = 0; attempt < 5 && !NetworkManager.Singleton.IsListening; attempt++) {
+            await ConnectRelay(gen);
+            if (NetworkManager.Singleton.IsListening || session != null) break;
+            await Task.Delay(3000); }
     }
 
     public async void ConnectButton() {
-        if (mode == Mode.RelaySession) await ConnectRelay(); }
+        if (mode == Mode.RelaySession) await ConnectRelay(-1); }
 
-    async Task ConnectRelay() {
+    async Task ConnectRelay(int gen) {
         if (busy || NetworkManager.Singleton.IsListening) return;
         busy = true;
         try {
-            Status = "Signing in...";
             if (UnityServices.State != ServicesInitializationState.Initialized){
+                Status = "Signing in...";
                 var options = new InitializationOptions();
 #if UNITY_EDITOR
                 options.SetProfile("editor" + UnityEngine.Random.Range(0, 99999));
+#else
+                options.SetProfile("player" + UnityEngine.Random.Range(0, 99999));
 #endif
                 await UnityServices.InitializeAsync(options); }
 
             if (!AuthenticationService.Instance.IsSignedIn)
                 await AuthenticationService.Instance.SignInAnonymouslyAsync();
 
+            if (gen < 0) gen = await NewestGeneration();
+            generation = gen;
+            string id = SessionId(gen);
             Status = $"Joining '{sessionName}'...";
-            var sessionOptions = new SessionOptions { MaxPlayers = 5 }.WithRelayNetwork();
-            session = await MultiplayerService.Instance.CreateOrJoinSessionAsync(sessionName, sessionOptions);
+            var sessionOptions = new SessionOptions { MaxPlayers = 5, Name = sessionName }.WithRelayNetwork();
+            session = await MultiplayerService.Instance.CreateOrJoinSessionAsync(id, sessionOptions);
 
             Status = session.IsHost ? $"HOST of '{sessionName}'" : $"Joined '{sessionName}'";
         }
@@ -61,6 +125,24 @@ public class NetworkBootstrap : MonoBehaviour {
             Debug.LogException(e); }
         finally {
             busy = false; }
+    }
+
+    async Task<int> NewestGeneration() {
+        try {
+            var results = await MultiplayerService.Instance.QuerySessionsAsync(new QuerySessionsOptions { Count = 50 });
+            int best = 0;
+            foreach (var info in results.Sessions) {
+                if (info.Name != sessionName || info.AvailableSlots <= 0) continue;
+                int gen = 0;
+                if (info.Id != sessionName) {
+                    string prefix = sessionName + "-";
+                    if (!info.Id.StartsWith(prefix) || !int.TryParse(info.Id.Substring(prefix.Length), out gen)) continue; }
+                if (gen > best) best = gen; }
+            return best;
+        }
+        catch (Exception e) {
+            Debug.LogWarning("[NetworkBootstrap] session lookup failed, using the default session: " + e.Message);
+            return 0; }
     }
 
     public void HostLan() {
@@ -85,7 +167,10 @@ public class NetworkBootstrap : MonoBehaviour {
         Status = $"Connecting to {hostIp}...";
     }
 
+    public void PrepareToQuit() { quitting = true; }
+
     async void OnApplicationQuit() {
+        quitting = true;
         if (session != null) await session.LeaveAsync(); }
 
 
@@ -93,6 +178,8 @@ public class NetworkBootstrap : MonoBehaviour {
     //unity's new Input System
     void Update()
     {
+        TrackSlots();
+
         if (mode != Mode.Lan) return;
 
         if (Keyboard.current == null) return;
