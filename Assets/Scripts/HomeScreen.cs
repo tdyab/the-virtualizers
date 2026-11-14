@@ -5,7 +5,7 @@ using UnityEngine.UI;
 using UnityEngine.XR;
 
 // "How to join" page shown before the headset is connected.
-// Creates itself at runtime and is head-locked like MatchHUD.
+// Creates itself at runtime and floats in front of the head via HudAnchor, like MatchHUD.
 public class HomeScreen : MonoBehaviour {
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Create() {
@@ -48,7 +48,7 @@ public class HomeScreen : MonoBehaviour {
             "1. All headsets on the same Wi-Fi with internet.\n\n" +
             "2. Open the app on ONE headset first.\n    Wait until it says HOST.\n\n" +
             "3. Open the app on the other headsets.\n    They join the host automatically (max 5).\n\n" +
-            "4. The lobby shows how many players joined.\n    The HOST presses A + X to start (2+ players).";
+            "4. The lobby shows how many players joined.\n    HOST: " + HostStartInput.HintText + " to start (2+ players).";
     }
 
     TMP_Text MakeText(string name, Vector2 pos, Vector2 size, float fontSize, TextAlignmentOptions align) {
@@ -72,14 +72,13 @@ public class HomeScreen : MonoBehaviour {
     }
 
     void LateUpdate() {
-        // Head-lock to the camera.
-        Camera cam = Camera.main;
-        if (cam == null) cam = FindFirstObjectByType<Camera>();
-        if (cam != null && transform.parent != cam.transform) {
-            transform.SetParent(cam.transform, false);
-            transform.localPosition = new Vector3(0, 0, distance);
+        // Float in front of the head (HudAnchor does the smooth follow).
+        var anchor = HudAnchor.Get();
+        if (anchor != null && transform.parent != anchor.transform) {
+            transform.SetParent(anchor.transform, false);
             transform.localRotation = Quaternion.identity;
         }
+        transform.localPosition = new Vector3(0, 0, distance);
 
         var nm = NetworkManager.Singleton;
         bool connected = nm != null && nm.IsListening;
@@ -87,9 +86,14 @@ public class HomeScreen : MonoBehaviour {
         if (connected) return;
 
         if (bootstrap == null) bootstrap = FindFirstObjectByType<NetworkBootstrap>();
-        status.text = bootstrap != null
-            ? bootstrap.Status + "\n<size=24>Press the right trigger to retry</size>"
-            : "Waiting for network...";
+        if (bootstrap == null)
+            status.text = "Waiting for network...";
+        else if (bootstrap.mode == NetworkBootstrap.Mode.Lan)
+            // LAN mode only connects with the H / J keys, which a headset doesn't have.
+            status.text = "<color=#FF5A4A>Network mode is LAN: this headset can't connect by itself.</color>\n" +
+                          "<size=24>Set NetworkBootstrap to Relay Session + Auto Connect for headset builds.</size>";
+        else
+            status.text = bootstrap.Status + "\n<size=24>Press the right trigger to retry</size>";
 
         bool pressed = Trigger(XRNode.RightHand);
         if (pressed && !wasPressed && bootstrap != null) bootstrap.ConnectButton();
