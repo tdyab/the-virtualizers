@@ -15,7 +15,7 @@ public class LaserTracer : MonoBehaviour
 {
     [Header("Size (metres)")]
     [Tooltip("Width of the coloured trail. The bright centre is about a third of this.")]
-    public float trailWidth = 0.018f;
+    public float trailWidth = 0.026f;
     public float boltWidth = 0.024f;
     public float boltLength = 2.5f;
     public float impactSize = 0.18f;
@@ -28,9 +28,9 @@ public class LaserTracer : MonoBehaviour
     public float impactTime = 0.14f;
 
     [Header("Look")]
-    [Range(0f, 1f)] public float trailAlpha = 0.8f;
+    [Range(0f, 1f)] public float trailAlpha = 0.95f;
     [Tooltip("How much the bolt is pushed towards white (0 = player colour, 1 = pure white).")]
-    [Range(0f, 1f)] public float boltWhiteness = 0.6f;
+    [Range(0f, 1f)] public float boltWhiteness = 0.15f;
 
     static LaserTracer instance;
     static Material lineMaterial;
@@ -43,7 +43,7 @@ public class LaserTracer : MonoBehaviour
         public Vector3 start, dir;
         public float length, t, travelTime;
         public Color color;
-        public bool hitPlayer, hitSomething;
+        public bool hitPlayer, hitSomething, splatted;
     }
 
     readonly List<Shot> active = new List<Shot>();
@@ -107,6 +107,7 @@ public class LaserTracer : MonoBehaviour
         s.color = color;
         s.hitPlayer = hitPlayer;
         s.hitSomething = hitSomething;
+        s.splatted = false;
         s.trail.enabled = s.bolt.enabled = true;
         s.impact.enabled = false;
         active.Add(s);
@@ -188,6 +189,13 @@ public class LaserTracer : MonoBehaviour
             s.bolt.SetPosition(1, headPos);
         }
 
+        // Paintball: leave a paint splat on walls / floor / bunkers where the shot lands.
+        if (!flying && !s.splatted)
+        {
+            s.splatted = true;
+            if (s.hitSomething && !s.hitPlayer) PaintSplats.Shot(s.start, s.start + s.dir * s.length, s.color);
+        }
+
         // Impact flash at the end point.
         float k = afterLand / impactTime;                     // 0 -> 1
         bool showImpact = s.hitSomething && afterLand >= 0f && k < 1f;
@@ -202,7 +210,7 @@ public class LaserTracer : MonoBehaviour
             if (cam) s.impact.transform.rotation = Quaternion.LookRotation(pos - cam.position, cam.up);
             float size = impactSize * (s.hitPlayer ? 1.8f : 1f) * Mathf.Lerp(0.6f, 1.3f, k);
             s.impact.transform.localScale = Vector3.one * size;
-            Color c = Color.Lerp(s.color, Color.white, s.hitPlayer ? 0.5f : 0.3f);
+            Color c = Color.Lerp(s.color, Color.white, s.hitPlayer ? 0.25f : 0.1f);
             c.a = 1f - k;
             s.impact.color = c;
         }

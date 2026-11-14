@@ -18,7 +18,11 @@ public class SpawnManager : MonoBehaviour {
     void Start() {
         for (int i = 0; i < spawnPoints.Length; i++) {
             var pad = spawnPoints[i].GetComponentInChildren<Renderer>();
-            if (pad) pad.material.color = PlayerAvatar.PlayerColors[i % PlayerAvatar.PlayerColors.Length]; }
+            if (!pad) continue;
+            Color c = PlayerAvatar.PlayerColors[i % PlayerAvatar.PlayerColors.Length];
+            pad.material.color = c;
+            pad.material.EnableKeyword("_EMISSION");
+            pad.material.SetColor("_EmissionColor", c * 1.4f); }
     }
 
     public int ClaimIndex(ulong clientId) {
